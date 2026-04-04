@@ -33,7 +33,7 @@
 //
 // PROJECT      :   Avionics Box
 // PRODUCT      :   SPI Slave
-// FILE         :   spi_slave.sv
+// FILE         :   spi_slave_phy.sv
 // AUTHOR       :   Sachith Rathnayake
 // DESCRIPTION  :   SPI Slave for reusable and expandable use.
 //
@@ -49,7 +49,7 @@
 
 `timescale 1ns/1ps
 
-module spi_slave (
+module spi_slave_phy (
     clk,
     rst,
 
