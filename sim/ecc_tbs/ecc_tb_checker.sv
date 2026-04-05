@@ -1,0 +1,279 @@
+// ************************************************************************************************************************
+//
+// Copyright (c) 2025 Sachith Rathnayake
+// All Rights Reserved.
+//
+// This software, HDL source code, hardware designs, documentation, and all
+// associated files (collectively, the "Work") are provided for viewing purposes
+// only.
+//
+// No permission is granted to copy, reproduce, modify, merge, publish,
+// distribute, sublicense, create derivative works from, or use the Work, in
+// whole or in part, for any purpose without explicit written permission from
+// the copyright holder.
+//
+// Commercial use requires a separate license agreement. Unauthorized use,
+// reproduction, modification, or distribution of the Work may result in civil
+// and criminal penalties.
+//
+// THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+// INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+// PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+// BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+// CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE WORK
+// OR THE USE OR OTHER DEALINGS IN THE WORK.
+//
+// For commercial licensing inquiries or support, please contact:
+// Phone:      +94 778 911 111
+// Email:      sachith.rathnayake.92@gmail.com
+// LinkedIn:   https://www.linkedin.com/in/sachith-rathnayake-profile-link/
+// GitHub:     https://github.com/LordSach
+//
+// ************************************************************************************************************************
+//
+// PROJECT      :   Avionics Box
+// PRODUCT      :   Chechker for ECC Testbench
+// FILE         :   ecc_tb_checker.sv
+// AUTHOR       :   Sachith Rathnayake
+// DESCRIPTION  :   Hamming Encoder / Decoder Testbench - Checker
+//                  Receive codeword and corrupt either 1 or 2 random bits
+// 
+// ************************************************************************************************************************
+//
+// REVISIONS:
+//
+//  Date           Developer               Description
+//  -----------    --------------------    -----------
+//  5-APR-2026    Sachith Rathnayake      Creation
+//
+// ************************************************************************************************************************
+
+`timescale 1ns/1ps
+
+module ecc_tb_checker (
+    clk_i,
+
+    nflips_i,
+    flip1_i,
+    flip2_i,
+
+    enc_d_i,
+    dec_q_i,
+
+    sb_err_i,
+    db_err_i,
+    sb_fix_i
+);
+
+    //---------------------------------------------------------------------------------------------------------------------
+    // Global constant headers
+    //---------------------------------------------------------------------------------------------------------------------
+    
+    // constants
+    
+    //---------------------------------------------------------------------------------------------------------------------
+    // parameter definitions
+    //---------------------------------------------------------------------------------------------------------------------
+    
+    parameter K         = 8;
+    parameter P0_LSB    = 0;
+
+    //---------------------------------------------------------------------------------------------------------------------
+    // Tasks
+    //---------------------------------------------------------------------------------------------------------------------
+    int good, bad, ugly;
+
+    task reset_counters();
+        good = 0;
+        bad  = 0;
+    endtask
+    
+    //---------------------------------------------------------------------------------------------------------------------
+    // localparam definitions
+    //---------------------------------------------------------------------------------------------------------------------
+    
+    localparam  int m = calculate_m(K);
+    localparam  int n = m + K;
+    localparam  INT   = 32;  
+
+    localparam P0_LOCATION = (P0_LSB == 0) ? n : 0;
+
+    //---------------------------------------------------------------------------------------------------------------------
+    // Functions
+    //---------------------------------------------------------------------------------------------------------------------
+    function integer calculate_m;
+        input integer k;
+
+        integer m;
+        begin
+            m=1;
+            while (2**m < m+k+1) m++;
+
+            calculate_m = m;
+        end
+    endfunction //calculate_m
+
+
+    function is_power_of_2(input int n);
+        is_power_of_2 = (n & (n-1)) == 0;
+    endfunction
+    
+    //---------------------------------------------------------------------------------------------------------------------
+    // type definitions
+    //---------------------------------------------------------------------------------------------------------------------
+    
+    // typedefs
+    
+    //---------------------------------------------------------------------------------------------------------------------
+    // I/O signals
+    //---------------------------------------------------------------------------------------------------------------------
+    
+    input   logic           clk_i;
+
+    input   logic [INT-1:0] nflips_i;
+    input   logic [INT-1:0] flip1_i;
+    input   logic [INT-1:0] flip2_i;
+
+    input   logic [K-1:0]   enc_d_i;
+    input   logic [K-1:0]   dec_q_i;
+
+    input   logic           sb_err_i;
+    input   logic           db_err_i;
+    input   logic           sb_fix_i;
+    
+    //---------------------------------------------------------------------------------------------------------------------
+    // Internal signals
+    //---------------------------------------------------------------------------------------------------------------------
+    
+    // internal signals
+    
+    //---------------------------------------------------------------------------------------------------------------------
+    // Implementation
+    //---------------------------------------------------------------------------------------------------------------------
+    
+    initial
+    begin
+        good = 0; //correct
+        bad  = 0; //test errors
+        ugly = 0; //total errors
+    end
+
+    always @(negedge clk_i)
+    begin
+        //Check if enc_d == dec_q
+        if (enc_d_i !== dec_q_i && !db_err_i)
+        begin
+            bad++; ugly++;
+            $display ("Data mismatch, expected %0h, received %0h", enc_d_i, dec_q_i);
+        end
+        else good++;
+
+        //Check flags
+        case (nflips_i)
+            0: begin
+                //no flags should be asserted
+                if (sb_err_i)
+                begin
+                    $display ("sb_err asserted: WRONG");
+                    bad++; ugly++;
+                end
+                else good++;
+
+                if (db_err_i)
+                begin
+                    $display ("db_err asserted: WRONG");
+                    bad++; ugly++;
+                end
+                else good++;
+
+                if (sb_fix_i)
+                begin
+                    $display ("sb_fix asserted: WRONG");
+                    bad++; ugly++;
+                end
+                else good++;
+            end
+
+            1: begin
+                //sb_err should be asserted, except for P0 
+            if (flip1_i == P0_LOCATION)
+                begin
+                        if ( sb_err_i)
+                        begin
+                            $display ("sb_err asserted on P0 bit flip: WRONG (flipped bit%0d)", flip1_i);
+                            bad++; ugly++;
+                        end
+                        else
+                        begin
+                            // $display ("sb_err not asserted on P0 bit flip: GOOD");
+                            good++;
+                        end
+                end
+                else if (!sb_err_i)
+                begin
+                    $display  ("sb_err not asserted: WRONG (flipped bit%0d)", flip1_i);
+                    bad++; ugly++;
+                end
+                else good++;
+
+
+                //db_err should never be asserted
+                if (db_err_i)
+                begin
+                    $display ("db_err asserted: WRONG (flipped bit %0d)", flip1_i);
+                    bad++; ugly++;
+                end
+                else good++;
+
+            //parity bits are on power of 2, should never assert sb_fix
+            if (sb_fix_i)
+                begin
+                    if (is_power_of_2( P0_LSB ? flip1_i : flip1_i +1 ))
+                    begin
+                        $display ("sb_fix asserted on parity bit (flipped bit%0d): WRONG", flip1_i);
+                        bad++; ugly++;
+                    end
+                    else good++;
+                end
+                else
+                begin
+
+                    if (!is_power_of_2( P0_LSB ? flip1_i : flip1_i +1 ) && (flip1_i != P0_LOCATION))
+                    begin
+                        $display ("sb_fix not asserted on data bit (flipped bit%0d): WRONG", flip1_i);
+                        bad++; ugly++;
+                    end
+                    else good++;
+                end
+            end
+
+            2: begin
+                    //db_err should be asserted
+                    if (!db_err_i)
+                    begin
+                        $display ("db_err not asserted: WRONG (flipped bits%0d and %0d", flip1_i, flip2_i);
+                        bad++; ugly++;
+                    end
+                    else good++;
+            
+                    //sb_err should not be asserted
+            if (sb_err_i)
+                    begin
+                        $display ("sb_err asserted AND db_err not asserted: WRONG (flipped bits%0d and %0d)", flip1_i, flip2_i);
+                        bad++; ugly++;
+                    end
+                    else good++;
+
+                    //sb_fix should not be asserted
+                    if (sb_fix_i)
+                    begin
+                        $display ("sb_fix asserted AND db_err not asserted: WRONG(flipped bits%0d and %0d)", flip1_i, flip2_i);
+                        bad++; ugly++;
+                    end
+                    else good++;
+            end
+        endcase
+    end
+
+endmodule
+
