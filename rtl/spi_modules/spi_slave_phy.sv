@@ -78,7 +78,7 @@ module spi_slave_phy (
 
    // SPI Interface
    i_spi_clk,
-   i_spi_miso,
+   o_spi_miso,
    i_spi_mosi,
    i_spi_cs_n        // active low
 );
@@ -122,7 +122,7 @@ module spi_slave_phy (
 
    // SPI Interface
    input    logic                   i_spi_clk;
-   output   logic                   i_spi_miso;
+   output   logic                   o_spi_miso;
    input    logic                   i_spi_mosi;
    input    logic                   i_spi_cs_n;     // active low
 
@@ -154,43 +154,50 @@ module spi_slave_phy (
     logic                           r_Preload_MISO;
 
     // CPOL: Clock Polarity
-    // CPOL=0 means clock idles at 0, leading edge is rising edge.
-    // CPOL=1 means clock idles at 1, leading edge is falling edge.
-    assign w_CPOL  = (SPI_MODE == 2) | (SPI_MODE == 3);
+  // CPOL=0 means clock idles at 0, leading edge is rising edge.
+  // CPOL=1 means clock idles at 1, leading edge is falling edge.
+  assign w_CPOL  = (SPI_MODE == 2) | (SPI_MODE == 3);
 
-    // CPHA: Clock Phase
-    // CPHA=0 means the "out" side changes the data on trailing edge of clock
-    //              the "in" side captures data on leading edge of clock
-    // CPHA=1 means the "out" side changes the data on leading edge of clock
-    //              the "in" side captures data on the trailing edge of clock
-    assign w_CPHA  = (SPI_MODE == 1) | (SPI_MODE == 3);
+  // CPHA: Clock Phase
+  // CPHA=0 means the "out" side changes the data on trailing edge of clock
+  //              the "in" side captures data on leading edge of clock
+  // CPHA=1 means the "out" side changes the data on leading edge of clock
+  //              the "in" side captures data on the trailing edge of clock
+  assign w_CPHA  = (SPI_MODE == 1) | (SPI_MODE == 3);
 
-    assign w_SPI_Clk = w_CPHA ? ~i_spi_clk : i_spi_clk;
+  assign w_SPI_Clk =(w_CPHA) ? ~i_spi_clk : i_spi_clk;
 
 
 
-    // Purpose: Recover SPI Byte in SPI Clock Domain
-    // Samples line on correct edge of SPI Clock
-    always_ff @(posedge w_SPI_Clk or posedge i_spi_cs_n) begin
-        if (i_spi_cs_n) begin
-            r_RX_Bit_Count  <= 0;
-            r_RX_Done       <= 1'b0;
-        end
-        else begin
-            r_RX_Bit_Count  <= r_RX_Bit_Count + 1;
+  // Purpose: Recover SPI Byte in SPI Clock Domain
+  // Samples line on correct edge of SPI Clock
+  always @(posedge w_SPI_Clk or posedge i_spi_cs_n)
+  begin
+    if (i_spi_cs_n)
+    begin
+      r_RX_Bit_Count <= 0;
+      r_RX_Done      <= 1'b0;
+    end
+    else
+    begin
+      r_RX_Bit_Count <= r_RX_Bit_Count + 1;
 
-            // Receive in LSB, shift up to MSB
-            r_Temp_RX_Byte  <= {r_Temp_RX_Byte[6:0], i_spi_mosi};
-            
-            if (r_RX_Bit_Count == 3'b111) begin
-                r_RX_Done   <= 1'b1;
-                r_RX_Byte   <= {r_Temp_RX_Byte[6:0], i_spi_mosi};
-            end
-            else if (r_RX_Bit_Count == 3'b010)begin
-                r_RX_Done   <= 1'b0;        
-            end
-        end // else: !if(i_spi_cs_n)
-    end // always @ (posedge w_SPI_Clk or posedge i_spi_cs_n)
+      // Receive in LSB, shift up to MSB
+      r_Temp_RX_Byte <= {r_Temp_RX_Byte[6:0], i_spi_mosi};
+    
+      if (r_RX_Bit_Count == 3'b111)
+      begin
+        r_RX_Done <= 1'b1;
+        r_RX_Byte <= {r_Temp_RX_Byte[6:0], i_spi_mosi};
+      end
+      else if (r_RX_Bit_Count == 3'b010)
+      begin
+        r_RX_Done <= 1'b0;        
+      end
+
+    end // else: !if(i_spi_cs_n)
+  end // always @ (posedge w_SPI_Clk or posedge i_spi_cs_n)
+
 
 
   // Purpose: Cross from SPI Clock Domain to main FPGA clock domain
@@ -201,7 +208,7 @@ module spi_slave_phy (
     begin
       r2_RX_Done <= 1'b0;
       r3_RX_Done <= 1'b0;
-      o_rx_valid    <= 1'b0;
+      o_rx_valid <= 1'b0;
       o_rx_byte  <= 8'h00;
     end
     else
@@ -284,6 +291,6 @@ module spi_slave_phy (
   assign w_SPI_MISO_Mux = r_Preload_MISO ? r_TX_Byte[3'b111] : r_SPI_MISO_Bit;
 
   // Tri-state MISO when CS is high.  Allows for multiple slaves to talk.
-  assign i_spi_miso = i_spi_cs_n ? 1'bZ : w_SPI_MISO_Mux;
+  assign o_spi_miso = i_spi_cs_n ? 1'bZ : w_SPI_MISO_Mux;
 
 endmodule // spi_slave_phy

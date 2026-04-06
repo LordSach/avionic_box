@@ -4,7 +4,7 @@
 
 module spi_slave_phy_tb ();
   
-  parameter SPI_MODE = 1; // CPOL = 0, CPHA = 1
+  parameter SPI_MODE = 3; // CPOL = 1, CPHA = 1
   parameter SPI_CLK_DELAY = 20;  // 2.5 MHz
   parameter MAIN_CLK_DELAY = 2;  // 25 MHz
 
@@ -20,7 +20,7 @@ module spi_slave_phy_tb ();
   logic [7:0] dataLength;
   
   // CPOL=0, clock idles 0.  CPOL=1, clock idles 1
-//  logic r_SPI_Clk   = w_CPOL ? 1'b1 : 1'b0;
+  //  logic r_SPI_Clk   = w_CPOL ? 1'b1 : 1'b0;
   logic w_SPI_Clk;
   logic r_SPI_En    = 1'b0;
   logic r_clk       = 1'b0;
@@ -44,14 +44,15 @@ module spi_slave_phy_tb ();
   always #(MAIN_CLK_DELAY) r_clk = ~r_clk;
 
   // Instantiate UUT
-  spi_slave_phy #(.SPI_MODE(SPI_MODE)) SPI_Slave_UUT
-  (
+  spi_slave_phy #(
+    .SPI_MODE(SPI_MODE)
+  ) spi_slave_phy_uut (
    // Control/Data Signals,
    .rst_n(r_rst_n),      // FPGA Reset
    .clk(r_clk),          // FPGA Clock
-   .o_rx_valid(w_Slave_RX_DV),      // Data Valid pulse (1 clock cycle)
+   .o_rx_valid(w_Slave_RX_DV),   // Data Valid pulse (1 clock cycle)
    .o_rx_byte(w_Slave_RX_Byte),  // Byte received on MOSI
-   .i_tx_valid(w_Slave_RX_DV),      // Data Valid pulse
+   .i_tx_valid(w_Slave_RX_DV),   // Data Valid pulse
    .i_tx_byte(w_Slave_RX_Byte),  // Byte to serialize to MISO (set up for loopback)
 
    // SPI Interface
@@ -59,40 +60,40 @@ module spi_slave_phy_tb ();
    .o_spi_miso(w_SPI_MISO),
    .i_spi_mosi(w_SPI_MOSI),
    .i_spi_cs_n(r_Master_CS_n)
-   );
+  );
 
   // Instantiate Master to drive Slave
-   spi_master_phy_core 
-  #(.SPI_MODE(SPI_MODE),
-    .CLKS_PER_HALF_BIT(2),
-    .NUM_SLAVES(1)) SPI_Master_UUT
-  (
+  spi_master_phy_core #(
+    .SPI_MODE(SPI_MODE),
+    .CLKS_PER_HALF_BIT(2)
+  ) spi_master_phy_core_uut (
    // Control/Data Signals,
    .rst_n(r_rst_n),     // FPGA Reset
    .clk(r_clk),         // FPGA Clock
    
    // TX (MOSI) Signals
    .i_tx_byte(r_Master_TX_Byte),     // Byte to transmit on MOSI
-   .i_tx_valid(r_Master_TX_DV),         // Data Valid Pulse with i_tx_byte
-   .o_TX_Ready(w_Master_TX_Ready),   // Transmit Ready for Byte
+   .i_tx_valid(r_Master_TX_DV),      // Data Valid Pulse with i_tx_byte
+   .o_tx_ready(w_Master_TX_Ready),   // Transmit Ready for Byte
    
    // RX (MISO) Signals
-   .o_rx_valid(r_Master_RX_DV),       // Data Valid pulse (1 clock cycle)
-   .o_rx_byte(r_Master_RX_Byte),   // Byte received on MISO
+   .o_rx_valid(r_Master_RX_DV),      // Data Valid pulse (1 clock cycle)
+   .o_rx_byte(r_Master_RX_Byte),     // Byte received on MISO
 
    // SPI Interface
-   .o_SPI_Clk(w_SPI_Clk),
-   .i_SPI_MISO(w_SPI_MISO),
-   .o_SPI_MOSI(w_SPI_MOSI)
-   );
+   .o_spi_clk(w_SPI_Clk),
+   .i_spi_miso(w_SPI_MISO),
+   .o_spi_mosi(w_SPI_MOSI)
+  );
 
 
   // Sends a single byte from master to slave.  Will drive CS on its own.
   task SendSingleByte(input [7:0] data);
     @(posedge r_clk);
+    r_Master_CS_n    <= 1'b0;
+    @(posedge r_clk);
     r_Master_TX_Byte <= data;
     r_Master_TX_DV   <= 1'b1;
-    r_Master_CS_n    <= 1'b0;
     @(posedge r_clk);
     r_Master_TX_DV <= 1'b0;
     @(posedge w_Master_TX_Ready);
@@ -106,16 +107,18 @@ module spi_slave_phy_tb ();
 
     @(posedge r_clk);
     r_Master_CS_n    <= 1'b0;
-
     for (ii=0; ii<length; ii++)
     begin
       @(posedge r_clk);
       r_Master_TX_Byte <= data[ii];
       r_Master_TX_DV   <= 1'b1;
+      
       @(posedge r_clk);
       r_Master_TX_DV <= 1'b0;
       @(posedge w_Master_TX_Ready);
     end
+    @(posedge r_clk);
+    repeat(100) @(posedge r_clk);
     r_Master_CS_n <= 1'b1;
   endtask // SendMultiByte
 
@@ -138,7 +141,7 @@ module spi_slave_phy_tb ();
       dataPayload[3]  = 8'hFF;
       dataPayload[4]  = 8'h55;
       dataPayload[5]  = 8'hAA;
-      dataLength      = 6;
+      dataLength      = 7;
       SendMultiByte(dataPayload, dataLength);
       repeat(100) @(posedge r_clk);
       $finish();      

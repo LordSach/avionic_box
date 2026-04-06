@@ -32,33 +32,32 @@ module spi_master_phy_tb ();
   always #(MAIN_CLK_DELAY) r_Clk = ~r_Clk;
 
   // Instantiate UUT
-  spi_master_phy
-  #(.SPI_MODE(SPI_MODE),
+  spi_master_phy #(
+    .SPI_MODE(SPI_MODE),
     .CLKS_PER_HALF_BIT(CLKS_PER_HALF_BIT),
     .MAX_BYTES_PER_CS(MAX_BYTES_PER_CS),
     .CS_INACTIVE_CLKS(CS_INACTIVE_CLKS)
-    ) UUT
-  (
+  ) spi_master_phy_uut (
    // Control/Data Signals,
-   .i_Rst_L(r_Rst_L),     // FPGA Reset
-   .i_Clk(r_Clk),         // FPGA Clock
+   .rst_n(r_Rst_L),     // FPGA Reset
+   .clk(r_Clk),         // FPGA Clock
    
    // TX (MOSI) Signals
-   .i_TX_Count(r_Master_TX_Count),   // Number of bytes per CS
-   .i_TX_Byte(r_Master_TX_Byte),     // Byte to transmit on MOSI
-   .i_TX_DV(r_Master_TX_DV),         // Data Valid Pulse with i_TX_Byte
-   .o_TX_Ready(w_Master_TX_Ready),   // Transmit Ready for Byte
+   .i_tx_count(r_Master_TX_Count),   // Number of bytes per CS
+   .i_tx_byte(r_Master_TX_Byte),     // Byte to transmit on MOSI
+   .i_tx_valid(r_Master_TX_DV),         // Data Valid Pulse with i_TX_Byte
+   .i_tx_ready(w_Master_TX_Ready),   // Transmit Ready for Byte
    
    // RX (MISO) Signals
-   .o_RX_Count(w_Master_RX_Count), // Index of RX'd byte
-   .o_RX_DV(w_Master_RX_DV),       // Data Valid pulse (1 clock cycle)
-   .o_RX_Byte(w_Master_RX_Byte),   // Byte received on MISO
+   .o_rx_count(w_Master_RX_Count), // Index of RX'd byte
+   .o_rx_valid(w_Master_RX_DV),       // Data Valid pulse (1 clock cycle)
+   .o_rx_byte(w_Master_RX_Byte),   // Byte received on MISO
 
    // SPI Interface
-   .o_SPI_Clk(w_SPI_Clk),
-   .i_SPI_MISO(w_SPI_MOSI),
-   .o_SPI_MOSI(w_SPI_MOSI),
-   .o_SPI_CS_n(w_SPI_CS_n)
+   .o_spi_clk(w_SPI_Clk),
+   .i_spi_miso(w_SPI_MOSI),
+   .o_spi_mosi(w_SPI_MOSI),
+   .o_spi_cs_n(w_SPI_CS_n)
    );
 
 
@@ -73,6 +72,7 @@ module spi_master_phy_tb ();
     @(posedge w_Master_TX_Ready);
   endtask // SendSingleByte
 
+  int mismatch_count;
   
   initial
     begin
@@ -84,12 +84,31 @@ module spi_master_phy_tb ();
       r_Rst_L  = 1'b0;
       repeat(10) @(posedge r_Clk);
       r_Rst_L          = 1'b1;
+
+      mismatch_count = 0;
       
       // Test sending 2 bytes
       SendSingleByte(8'hC1);
-      $display("Sent out 0xC1, Received 0x%X", w_Master_RX_Byte); 
+      $display("Sent out 0xC1, Received 0x%X", w_Master_RX_Byte);
+
+      if(w_Master_RX_Byte != 8'hC1) mismatch_count++;
+
       SendSingleByte(8'hC2);
-      $display("Sent out 0xC2, Received 0x%X", w_Master_RX_Byte); 
+      $display("Sent out 0xC2, Received 0x%X", w_Master_RX_Byte);
+
+      if(w_Master_RX_Byte != 8'hC2) mismatch_count++;
+
+      SendSingleByte(8'hC3);
+      $display("Sent out 0xC3, Received 0x%X", w_Master_RX_Byte);
+
+      if(w_Master_RX_Byte != 8'hC3) mismatch_count++;
+
+      if(mismatch_count>0) begin
+        $display("\n\n%d number of Mismatches found. \n\n\t\tTest: FAILED\n\n", mismatch_count); 
+      end
+      else begin
+        $display("\n\n\t\tTest: PASSED\n\n"); 
+      end
 
       repeat(100) @(posedge r_Clk);
       $finish();      

@@ -41,15 +41,15 @@
 //              Will also receive byte data one bit at a time on MISO.
 //              Any data on input byte will be shipped out on MOSI.
 //
-//              To kick-off transaction, user must pulse i_TX_DV.
+//              To kick-off transaction, user must pulse i_tx_valid.
 //              This module supports multi-byte transmissions by pulsing
-//              i_TX_DV and loading up i_TX_Byte when o_TX_Ready is high.
+//              i_tx_valid and loading up i_tx_byte when o_tx_ready is high.
 //
 //              This module is only responsible for controlling Clk, MOSI, 
 //              and MISO.  If the SPI peripheral requires a chip-select, 
 //              this must be done at a higher level.
 //
-// Note:        i_Clk must be at least 2x faster than i_SPI_Clk
+// Note:        clk must be at least 2x faster than i_SPI_Clk
 //
 // Parameters:  SPI_MODE, can be 0, 1, 2, or 3.  See above.
 //              Can be configured in one of 4 modes:
@@ -59,9 +59,9 @@
 //               2   |             1             |        0
 //               3   |             1             |        1
 //              More: https://en.wikipedia.org/wiki/Serial_Peripheral_Interface_Bus#Mode_numbers
-//              CLKS_PER_HALF_BIT - Sets frequency of o_SPI_Clk.  o_SPI_Clk is
-//              derived from i_Clk.  Set to integer number of clocks for each
-//              half-bit of SPI data.  E.g. 100 MHz i_Clk, CLKS_PER_HALF_BIT = 2
+//              CLKS_PER_HALF_BIT - Sets frequency of o_spi_clk.  o_spi_clk is
+//              derived from clk.  Set to integer number of clocks for each
+//              half-bit of SPI data.  E.g. 100 MHz clk, CLKS_PER_HALF_BIT = 2
 //              would create o_SPI_CLK of 25 MHz.  Must be >= 2
 // ************************************************************************************************************************
 //
@@ -76,85 +76,96 @@
 `timescale 1ns/1ps
 
 module spi_master_phy_core (
-// Control/Data Signals,
-input        i_Rst_L,     // FPGA Reset
-input        i_Clk,       // FPGA Clock
+  // Control/Data Signals,
+  rst_n,     // FPGA Reset
+  clk,       // FPGA Clock
 
-// TX (MOSI) Signals
-input [7:0]  i_TX_Byte,        // Byte to transmit on MOSI
-input        i_TX_DV,          // Data Valid Pulse with i_TX_Byte
-output reg   o_TX_Ready,       // Transmit Ready for next byte
+  // TX (MOSI) Signals
+  i_tx_byte,        // Byte to transmit on MOSI
+  i_tx_valid,          // Data Valid Pulse with i_tx_byte
+  o_tx_ready,       // Transmit Ready for next byte
 
-// RX (MISO) Signals
-output reg       o_RX_DV,     // Data Valid pulse (1 clock cycle)
-output reg [7:0] o_RX_Byte,   // Byte received on MISO
+  // RX (MISO) Signals
+  o_rx_valid,     // Data Valid pulse (1 clock cycle)
+  o_rx_byte,   // Byte received on MISO
 
-// SPI Interface
-output reg o_SPI_Clk,
-input      i_SPI_MISO,
-output reg o_SPI_MOSI
+  // SPI Interface
+  o_spi_clk,
+  i_spi_miso,
+  o_spi_mosi
 );
 
-    //---------------------------------------------------------------------------------------------------------------------
-    // Global constant headers
-    //---------------------------------------------------------------------------------------------------------------------
-    
-    // NA
-    
-    //---------------------------------------------------------------------------------------------------------------------
-    // parameter definitions
-    //---------------------------------------------------------------------------------------------------------------------
-    
-parameter SPI_MODE = 0;
-parameter CLKS_PER_HALF_BIT = 2;
-    
-    //---------------------------------------------------------------------------------------------------------------------
-    // localparam definitions
-    //---------------------------------------------------------------------------------------------------------------------
-    
-    localparam IDLE         = 2'b00;
-    localparam TRANSFER     = 2'b01;
-    localparam CS_INACTIVE  = 2'b10;
-    localparam CNTR_WIDTH   = $clog2(MAX_BYTES_PER_CS+1);
-    localparam CS_CLKS_W    = $clog2(CS_INACTIVE_CLKS);
-    localparam TX_CNT_WIDTH = $clog2(MAX_BYTES_PER_CS+1);
-    
-    //---------------------------------------------------------------------------------------------------------------------
-    // type definitions
-    //---------------------------------------------------------------------------------------------------------------------
-    
-    // NA
-    
-    //---------------------------------------------------------------------------------------------------------------------
-    // I/O signals
-    //---------------------------------------------------------------------------------------------------------------------
-    
-    
-    
-    //---------------------------------------------------------------------------------------------------------------------
-    // Internal signals
-    //---------------------------------------------------------------------------------------------------------------------
-    
-    // SPI Interface (All Runs at SPI Clock Domain)
-  wire w_CPOL;     // Clock polarity
-  wire w_CPHA;     // Clock phase
+  //---------------------------------------------------------------------------------------------------------------------
+  // Global constant headers
+  //---------------------------------------------------------------------------------------------------------------------
+  
+  // NA
+  
+  //---------------------------------------------------------------------------------------------------------------------
+  // parameter definitions
+  //---------------------------------------------------------------------------------------------------------------------
+  
+  parameter SPI_MODE = 0;
+  parameter CLKS_PER_HALF_BIT = 2;
+  
+  //---------------------------------------------------------------------------------------------------------------------
+  // localparam definitions
+  //---------------------------------------------------------------------------------------------------------------------
+  
+  // NA
+  
+  //---------------------------------------------------------------------------------------------------------------------
+  // type definitions
+  //---------------------------------------------------------------------------------------------------------------------
+  
+  // NA
+  
+  //---------------------------------------------------------------------------------------------------------------------
+  // I/O signals
+  //---------------------------------------------------------------------------------------------------------------------
+  
+  // Control/Data Signals,
+  input   logic         rst_n;     // FPGA Reset
+  input   logic         clk;       // FPGA Clock
 
-  reg [$clog2(CLKS_PER_HALF_BIT*2)-1:0] r_SPI_Clk_Count;
-  reg r_SPI_Clk;
-  reg [4:0] r_SPI_Clk_Edges;
-  reg r_Leading_Edge;
-  reg r_Trailing_Edge;
-  reg       r_TX_DV;
-  reg [7:0] r_TX_Byte;
+  // TX (MOSI) Signals
+  input   logic [7:0]   i_tx_byte;        // Byte to transmit on MOSI
+  input   logic         i_tx_valid;          // Data Valid Pulse with i_tx_byte
+  output  logic         o_tx_ready;       // Transmit Ready for next byte
 
-  reg [2:0] r_RX_Bit_Count;
-  reg [2:0] r_TX_Bit_Count;
+  // RX (MISO) Signals
+  output  logic         o_rx_valid;     // Data Valid pulse (1 clock cycle)
+  output  logic [7:0]   o_rx_byte;   // Byte received on MISO
+
+  // SPI Interface
+  output  logic         o_spi_clk;
+  input   logic         i_spi_miso;
+  output  logic         o_spi_mosi;
+  
+  //---------------------------------------------------------------------------------------------------------------------
+  // Internal signals
+  //---------------------------------------------------------------------------------------------------------------------
+  
+  // SPI Interface (All Runs at SPI Clock Domain)
+  logic w_CPOL;     // Clock polarity
+  logic w_CPHA;     // Clock phase
+
+  logic [$clog2(CLKS_PER_HALF_BIT*2)-1:0] r_SPI_Clk_Count;
+  logic r_SPI_Clk;
+  logic [4:0] r_SPI_Clk_Edges;
+  logic r_Leading_Edge;
+  logic r_Trailing_Edge;
+  logic       r_TX_DV;
+  logic [7:0] r_TX_Byte;
+
+  logic [2:0] r_RX_Bit_Count;
+  logic [2:0] r_TX_Bit_Count;
     
-    //---------------------------------------------------------------------------------------------------------------------
-    // Implementation
-    //---------------------------------------------------------------------------------------------------------------------
+  //---------------------------------------------------------------------------------------------------------------------
+  // Implementation
+  //---------------------------------------------------------------------------------------------------------------------
     
-    // CPOL: Clock Polarity
+  // CPOL: Clock Polarity
   // CPOL=0 means clock idles at 0, leading edge is rising edge.
   // CPOL=1 means clock idles at 1, leading edge is falling edge.
   assign w_CPOL  = (SPI_MODE == 2) | (SPI_MODE == 3);
@@ -169,11 +180,11 @@ parameter CLKS_PER_HALF_BIT = 2;
 
 
   // Purpose: Generate SPI Clock correct number of times when DV pulse comes
-  always @(posedge i_Clk or negedge i_Rst_L)
+  always @(posedge clk or negedge rst_n)
   begin
-    if (~i_Rst_L)
+    if (~rst_n)
     begin
-      o_TX_Ready      <= 1'b0;
+      o_tx_ready      <= 1'b0;
       r_SPI_Clk_Edges <= 0;
       r_Leading_Edge  <= 1'b0;
       r_Trailing_Edge <= 1'b0;
@@ -187,14 +198,14 @@ parameter CLKS_PER_HALF_BIT = 2;
       r_Leading_Edge  <= 1'b0;
       r_Trailing_Edge <= 1'b0;
       
-      if (i_TX_DV)
+      if (i_tx_valid)
       begin
-        o_TX_Ready      <= 1'b0;
+        o_tx_ready      <= 1'b0;
         r_SPI_Clk_Edges <= 16;  // Total # edges in one byte ALWAYS 16
       end
       else if (r_SPI_Clk_Edges > 0)
       begin
-        o_TX_Ready <= 1'b0;
+        o_tx_ready <= 1'b0;
         
         if (r_SPI_Clk_Count == CLKS_PER_HALF_BIT*2-1)
         begin
@@ -217,91 +228,91 @@ parameter CLKS_PER_HALF_BIT = 2;
       end  
       else
       begin
-        o_TX_Ready <= 1'b1;
+        o_tx_ready <= 1'b1;
       end
       
       
-    end // else: !if(~i_Rst_L)
-  end // always @ (posedge i_Clk or negedge i_Rst_L)
+    end // else: !if(~rst_n)
+  end // always @ (posedge clk or negedge rst_n)
 
 
-  // Purpose: Register i_TX_Byte when Data Valid is pulsed.
+  // Purpose: Register i_tx_byte when Data Valid is pulsed.
   // Keeps local storage of byte in case higher level module changes the data
-  always @(posedge i_Clk or negedge i_Rst_L)
+  always @(posedge clk or negedge rst_n)
   begin
-    if (~i_Rst_L)
+    if (~rst_n)
     begin
       r_TX_Byte <= 8'h00;
       r_TX_DV   <= 1'b0;
     end
     else
       begin
-        r_TX_DV <= i_TX_DV; // 1 clock cycle delay
-        if (i_TX_DV)
+        r_TX_DV <= i_tx_valid; // 1 clock cycle delay
+        if (i_tx_valid)
         begin
-          r_TX_Byte <= i_TX_Byte;
+          r_TX_Byte <= i_tx_byte;
         end
-      end // else: !if(~i_Rst_L)
-  end // always @ (posedge i_Clk or negedge i_Rst_L)
+      end // else: !if(~rst_n)
+  end // always @ (posedge clk or negedge rst_n)
 
 
   // Purpose: Generate MOSI data
   // Works with both CPHA=0 and CPHA=1
-  always @(posedge i_Clk or negedge i_Rst_L)
+  always @(posedge clk or negedge rst_n)
   begin
-    if (~i_Rst_L)
+    if (~rst_n)
     begin
-      o_SPI_MOSI     <= 1'b0;
+      o_spi_mosi     <= 1'b0;
       r_TX_Bit_Count <= 3'b111; // send MSb first
     end
     else
     begin
       // If ready is high, reset bit counts to default
-      if (o_TX_Ready)
+      if (o_tx_ready)
       begin
         r_TX_Bit_Count <= 3'b111;
       end
       // Catch the case where we start transaction and CPHA = 0
       else if (r_TX_DV & ~w_CPHA)
       begin
-        o_SPI_MOSI     <= r_TX_Byte[3'b111];
+        o_spi_mosi     <= r_TX_Byte[3'b111];
         r_TX_Bit_Count <= 3'b110;
       end
       else if ((r_Leading_Edge & w_CPHA) | (r_Trailing_Edge & ~w_CPHA))
       begin
         r_TX_Bit_Count <= r_TX_Bit_Count - 1'b1;
-        o_SPI_MOSI     <= r_TX_Byte[r_TX_Bit_Count];
+        o_spi_mosi     <= r_TX_Byte[r_TX_Bit_Count];
       end
     end
   end
 
 
   // Purpose: Read in MISO data.
-  always @(posedge i_Clk or negedge i_Rst_L)
+  always @(posedge clk or negedge rst_n)
   begin
-    if (~i_Rst_L)
+    if (~rst_n)
     begin
-      o_RX_Byte      <= 8'h00;
-      o_RX_DV        <= 1'b0;
-      r_RX_Bit_Count <= 3'b111;
+      o_rx_byte       <= 8'h00;
+      o_rx_valid      <= 1'b0;
+      r_RX_Bit_Count  <= 3'b111;
     end
     else
     begin
 
       // Default Assignments
-      o_RX_DV   <= 1'b0;
+      o_rx_valid   <= 1'b0;
 
-      if (o_TX_Ready) // Check if ready is high, if so reset bit count to default
+      if (o_tx_ready) // Check if ready is high, if so reset bit count to default
       begin
         r_RX_Bit_Count <= 3'b111;
       end
       else if ((r_Leading_Edge & ~w_CPHA) | (r_Trailing_Edge & w_CPHA))
       begin
-        o_RX_Byte[r_RX_Bit_Count] <= i_SPI_MISO;  // Sample data
+        o_rx_byte[r_RX_Bit_Count] <= i_spi_miso;  // Sample data
         r_RX_Bit_Count            <= r_RX_Bit_Count - 1'b1;
         if (r_RX_Bit_Count == 3'b000)
         begin
-          o_RX_DV   <= 1'b1;   // Byte done, pulse Data Valid
+          o_rx_valid   <= 1'b1;   // Byte done, pulse Data Valid
         end
       end
     end
@@ -309,16 +320,16 @@ parameter CLKS_PER_HALF_BIT = 2;
   
   
   // Purpose: Add clock delay to signals for alignment.
-  always @(posedge i_Clk or negedge i_Rst_L)
+  always @(posedge clk or negedge rst_n)
   begin
-    if (~i_Rst_L)
+    if (~rst_n)
     begin
-      o_SPI_Clk  <= w_CPOL;
+      o_spi_clk  <= w_CPOL;
     end
     else
       begin
-        o_SPI_Clk <= r_SPI_Clk;
-      end // else: !if(~i_Rst_L)
-  end // always @ (posedge i_Clk or negedge i_Rst_L)
+        o_spi_clk <= r_SPI_Clk;
+      end
+  end
 
 endmodule
