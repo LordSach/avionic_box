@@ -70,6 +70,11 @@ module command_dispatcher_engine (
 
     // Actuator Double Buffer Access Controller Interface
 
+    // Control paths for each ADC Manager 
+
+    // Control paths for each PWM Driver Engine
+
+    // interface for Built In Test Module
 
 );
 
@@ -83,13 +88,18 @@ module command_dispatcher_engine (
     // parameter definitions
     //---------------------------------------------------------------------------------------------------------------------
     
-    // parameters
+    // OBC SPI Interface 0 parameters
+    parameter SPI_MODE_0 = 3;
+
+    // OBC SPI Interface 1 parameters
+    parameter SPI_MODE_1 = 3;
     
     //---------------------------------------------------------------------------------------------------------------------
     // localparam definitions
     //---------------------------------------------------------------------------------------------------------------------
     
-    // localparams
+    // comman local parameters
+    localparam BYTE_WIDTH  = 8;
     
     //---------------------------------------------------------------------------------------------------------------------
     // type definitions
@@ -111,21 +121,82 @@ module command_dispatcher_engine (
     input    logic                   i_spi_0_cs_n;
 
     // OBC SPI Interface 1
-    input    logic                   i_spi_0_clk;
-    output   logic                   o_spi_0_miso;
-    input    logic                   i_spi_0_mosi;
-    input    logic                   i_spi_0_cs_n;
+    input    logic                   i_spi_1_clk;
+    output   logic                   o_spi_1_miso;
+    input    logic                   i_spi_1_mosi;
+    input    logic                   i_spi_1_cs_n;
+
+    // Sensor Double Buffer Access Contoller Interface
+
+    // Actuator Double Buffer Access Controller Interface
+
+    // Control paths for each ADC Manager 
+
+    // Control paths for each PWM Driver Engine
+
+    // interface for Built In Test Module
     
     //---------------------------------------------------------------------------------------------------------------------
     // Internal signals
     //---------------------------------------------------------------------------------------------------------------------
     
-    // internal signals
+    // for spi_slave_phy_0
+    logic                   ex_valid_0;
+    logic [BYTE_WIDTH-1:0]  rx_byte_0;
+    logic                   tx_valid_0;
+    logic [BYTE_WIDTH-1:0]  tx_byte_0;
+
+    // for spi_slave_phy_1
+    logic                   ex_valid_1;
+    logic [BYTE_WIDTH-1:0]  rx_byte_1;
+    logic                   tx_valid_1;
+    logic [BYTE_WIDTH-1:0]  tx_byte_1;
+    
+    //---------------------------------------------------------------------------------------------------------------------
+    // Sub Module Instantiation 
+    //---------------------------------------------------------------------------------------------------------------------
+    
+    spi_slave_phy #(
+        .SPI_MODE(SPI_MODE_0)
+    ) spi_slave_phy_0 (
+        // Control/Data Signals,
+        .rst_n(rst_n),    // FPGA Reset, active low
+        .clk(clk),      // FPGA Clock
+
+        .o_rx_valid(ex_valid_0),    // Data Valid pulse (1 clock cycle)
+        .o_rx_byte(rx_byte_0),  // Byte received on MOSI
+        .i_tx_valid(tx_valid_0),    // Data Valid pulse to register i_tx_byte
+        .i_tx_byte(tx_byte_0),  // Byte to serialize to MISO.
+
+        // SPI Interface
+        .i_spi_clk(i_spi_0_clk),
+        .o_spi_miso(o_spi_0_miso),
+        .i_spi_mosi(i_spi_0_mosi),
+        .i_spi_cs_n(i_spi_0_cs_n)        // active low
+    );
+
+    spi_slave_phy #(
+        .SPI_MODE(SPI_MODE_1)
+    ) spi_slave_phy_1 (
+        // Control/Data Signals,
+        .rst_n(rst_n),    // FPGA Reset, active low
+        .clk(clk),      // FPGA Clock
+
+        .o_rx_valid(ex_valid_1),    // Data Valid pulse (1 clock cycle)
+        .o_rx_byte(rx_byte_1),  // Byte received on MOSI
+        .i_tx_valid(tx_valid_1),    // Data Valid pulse to register i_tx_byte
+        .i_tx_byte(tx_byte_1),  // Byte to serialize to MISO.
+
+        // SPI Interface
+        .i_spi_clk(i_spi_1_clk),
+        .o_spi_miso(o_spi_1_miso),
+        .i_spi_mosi(i_spi_1_mosi),
+        .i_spi_cs_n(i_spi_1_cs_n)        // active low
+    );
     
     //---------------------------------------------------------------------------------------------------------------------
     // Implementation
     //---------------------------------------------------------------------------------------------------------------------
     
-    // implementation
 
 endmodule

@@ -111,7 +111,7 @@ module spi_master_phy (
     // parameter definitions
     //---------------------------------------------------------------------------------------------------------------------
     
-    parameter SPI_MODE          = 0;
+    parameter SPI_MODE          = 3;
     parameter CLKS_PER_HALF_BIT = 2;
     parameter MAX_BYTES_PER_CS  = 2;
     parameter CS_INACTIVE_CLKS  = 1;
