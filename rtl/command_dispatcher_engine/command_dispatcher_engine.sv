@@ -106,6 +106,10 @@ module command_dispatcher_engine (
     localparam O_SPI_STATE_WIDTH                = $clog2(O_SPI_NUM_OF_FIELDS_OF_FRAME_FSM);
     localparam BYTE_CNT_WIDTH_DEC               = $clog2(BYTE_WIDTH*16);
     localparam BYTE_CNT_WIDTH_ENC               = $clog2(BYTE_WIDTH*24);
+
+    // command types
+    localparam logic [BYTE_WIDTH*2-1   :0] READ_ALL_CHANNELS_IN_EVERY_DEVICE = {BYTE_WIDTH*2{1'b1}};
+    localparam logic [BYTE_WIDTH*2-1   :0] READ_ALL_CHANNELS_FROM_DEVICE_ID  = {BYTE_WIDTH*2{1'b1}};
     
     //---------------------------------------------------------------------------------------------------------------------
     // type definitions
@@ -122,7 +126,8 @@ module command_dispatcher_engine (
         I_SPI_REG_ADDR_0,
         I_SPI_REG_ADDR_1,
         I_SPI_PAYLOAD_BYTES,
-        I_SPI_CRC_16
+        I_SPI_CRC_16,
+        I_SPI_HAULT
     } spi_input_decoder_state_t;
 
 
@@ -212,23 +217,29 @@ module command_dispatcher_engine (
     //---------------------------------------------------------------------------------------------------------------------
     
     // for spi_slave_phy_0
-    logic                       rx_valid_0;
-    logic [BYTE_WIDTH-1:0]      rx_byte_0;
-    logic                       tx_valid_0;
-    logic [BYTE_WIDTH-1:0]      tx_byte_0;
+    logic                           rx_valid_0;
+    logic [BYTE_WIDTH-1:0]          rx_byte_0;
+    logic                           tx_valid_0;
+    logic [BYTE_WIDTH-1:0]          tx_byte_0;
 
     // for spi_slave_phy_1
-    logic                       rx_valid_1;
-    logic [BYTE_WIDTH-1:0]      rx_byte_1;
-    logic                       tx_valid_1;
-    logic [BYTE_WIDTH-1:0]      tx_byte_1;
+    logic                           rx_valid_1;
+    logic [BYTE_WIDTH-1:0]          rx_byte_1;
+    logic                           tx_valid_1;
+    logic [BYTE_WIDTH-1:0]          tx_byte_1;
 
     // spy slave phy 0 decoder state register
     spi_input_decoder_state_t       spi_i_dec_state_0;
     
     spi_command_union_t             spi_command_union_0;
     logic [BYTE_CNT_WIDTH_DEC-1]    payload_b_cnt;
+    logic                           command_type_stored;
+    logic                           read_all_channels;
+    logic                           read_every_channel_from_id;
+    logic                           d_id_and_reg_addr_stored;
     logic                           input_frame_stored;
+
+    logic                           telemetry_frame_sent; //bit flag when 1 SPI decoder0 fsm releases from I_SPI_HAULT state and put it to I_SPI_IDLE
 
     // spy slave phy 0 encoder state register
     spi_output_encoder_state_t      spi_o_enc_state_0;
@@ -298,6 +309,11 @@ module command_dispatcher_engine (
             spi_i_dec_state_0           <= I_SPI_IDLE;
             spi_command_union_0.as_bits <= {BYTE_WIDTH*24{1'b0}};
             payload_b_cnt               <= {BYTE_CNT_WIDTH_DEC{1'b0}};
+            command_type_stored         <= 1'b0;    // flag when command type is retrieved
+            read_all_channels           <= 1'b0;    // flag for reading all the channels in devices
+            read_every_channel_from_id  <= 1'b0;    // flag for reading every channel from given device id 
+            input_frame_stored          <= 1'b0;    // flag when a frame is fully stored in spi_command_union_0
+            d_id_and_reg_addr_stored    <= 1'b0;    // flag when device ID and register address is retrieved
         end
         else begin
             unique case (spi_i_dec_state_0)
@@ -327,16 +343,27 @@ module command_dispatcher_engine (
                     if (rx_valid_0) begin
                         spi_i_dec_state_0                                           <= I_SPI_COMMAND_TYPE_1;
                         spi_command_union_0.as_frame.command_type[7 -:BYTE_WIDTH]   <= rx_byte_0;
+                        command_type_stored                                         <= 1'b1;
                     end
                 end
                 I_SPI_COMMAND_TYPE_1: begin
-                    if (rx_valid_0) begin
+                    if (spi_command_union_0.as_frame.command_type == READ_ALL_CHANNELS_IN_EVERY_DEVICE && rx_valid_0) begin
+                        spi_i_dec_state_0                   <= I_SPI_CRC_16;
+                        spi_command_union_0.as_frame.crc    <= rx_byte_0;
+                        read_all_channels                   <= 1'b1;
+                    end
+                    else if (rx_valid_0) begin
                         spi_i_dec_state_0                       <= I_SPI_DEVICE_ID;
                         spi_command_union_0.as_frame.device_id  <= rx_byte_0;
                     end
                 end
                 I_SPI_DEVICE_ID: begin
-                    if (rx_valid_0) begin
+                    if (spi_command_union_0.as_frame.command_type == READ_ALL_CHANNELS_FROM_DEVICE_ID && rx_valid_0) begin
+                        spi_i_dec_state_0                   <= I_SPI_CRC_16;
+                        spi_command_union_0.as_frame.crc    <= rx_byte_0;
+                        read_every_channel_from_id          <= 1'b1;
+                    end
+                    else if (rx_valid_0) begin
                         spi_i_dec_state_0                                           <= I_SPI_REG_ADDR_0;
                         spi_command_union_0.as_frame.register_addr[15-:BYTE_WIDTH]  <= rx_byte_0;
                     end
@@ -345,6 +372,7 @@ module command_dispatcher_engine (
                     if (rx_valid_0) begin
                         spi_i_dec_state_0                                           <= I_SPI_REG_ADDR_1;
                         spi_command_union_0.as_frame.register_addr[7 -:BYTE_WIDTH]  <= rx_byte_0;
+                        d_id_and_reg_addr_stored                    <= 1'b1;
                     end
                 end
                 I_SPI_REG_ADDR_1: begin
@@ -355,8 +383,9 @@ module command_dispatcher_engine (
                     end
                 end
                 I_SPI_PAYLOAD_BYTES: begin
-                    if (payload_b_cnt == 'd0) begin
-                        spi_i_dec_state_0                                                                   <= I_SPI_CRC_16;
+                    if (payload_b_cnt == 'd0 && rx_valid_0) begin
+                        spi_i_dec_state_0                   <= I_SPI_CRC_16;
+                        spi_command_union_0.as_frame.crc    <= rx_byte_0;
                     end
                     else if (rx_valid_0) begin
                         spi_command_union_0.as_frame.data_payload[BYTE_WIDTH*payload_b_cnt-1 -:BYTE_WIDTH]  <= rx_byte_0;
@@ -365,13 +394,31 @@ module command_dispatcher_engine (
                 end
                 I_SPI_CRC_16: begin
                     if (rx_valid_0) begin
-                        spi_i_dec_state_0                   <= I_SPI_IDLE;
-                        spi_command_union_0.as_frame.crc    <= rx_byte_0;
+                        spi_i_dec_state_0                   <= I_SPI_HAULT;
                         input_frame_stored                  <= 1'b1;    // flag when a frame is fully stored in spi_command_union_0
                     end
                 end
+                I_SPI_HAULT: begin
+                    if (telemetry_frame_sent) begin
+                        spi_i_dec_state_0           <= I_SPI_IDLE;
+                        spi_command_union_0.as_bits <= {BYTE_WIDTH*24{1'b0}};
+                        payload_b_cnt               <= {BYTE_CNT_WIDTH_DEC{1'b0}};
+                        command_type_stored         <= 1'b0;    // flag when command type is retrieved
+                        read_all_channels           <= 1'b0;    // flag for reading all the channels in devices
+                        read_every_channel_from_id  <= 1'b0;    // flag for reading every channel from given device id
+                        input_frame_stored          <= 1'b0;    // flag when a frame is fully stored in spi_command_union_0
+                        d_id_and_reg_addr_stored    <= 1'b0;    // flag when device ID and register address is retrieved 
+                    end
+                end
                 default: begin
-                    spi_i_dec_state_0   <= I_SPI_IDLE;
+                    spi_i_dec_state_0           <= I_SPI_IDLE;
+                    spi_command_union_0.as_bits <= {BYTE_WIDTH*24{1'b0}};
+                    payload_b_cnt               <= {BYTE_CNT_WIDTH_DEC{1'b0}};
+                    command_type_stored         <= 1'b0;    // flag when command type is retrieved
+                    read_all_channels           <= 1'b0;    // flag for reading all the channels in devices
+                    read_every_channel_from_id  <= 1'b0;    // flag for reading every channel from given device id
+                    input_frame_stored          <= 1'b0;    // flag when a frame is fully stored in spi_command_union_0
+                    d_id_and_reg_addr_stored    <= 1'b0;    // flag when device ID and register address is retrieved
                 end
             endcase
         end
@@ -470,6 +517,9 @@ module command_dispatcher_engine (
                     
                 end
                 I_SPI_CRC_16: begin
+                    
+                end
+                I_SPI_HAULT: begin
                     
                 end
                 default: begin
