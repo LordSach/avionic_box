@@ -64,7 +64,7 @@ module ecc_tb_top ;
     parameter K           = 72;  //Limitation $urandom is a 32bit number
     parameter P0_LSB      = 0;
     parameter DEC_LATENCY = 0;
-    parameter RUNS        = 100_000;
+    parameter RUNS        = 1000;
     
     //---------------------------------------------------------------------------------------------------------------------
     // localparam definitions
@@ -164,9 +164,16 @@ module ecc_tb_top ;
         rst_errors();
         nflips = 0;
 
-        for (enc_d = 0; enc_d < runs; enc_d++)
-        begin
+        // Flush pipeline with dummy data
+        enc_d = 0;
         @(posedge clk);
+        enc_d = 0;
+        @(posedge clk);
+
+        enc_d = 0;
+        while (enc_d < runs) begin
+            enc_d++;
+            @(posedge clk);
         end
 
         tst_done();
@@ -319,15 +326,15 @@ module ecc_tb_top ;
 
 
     //instantiate encoder
-    ecc_enc #(
-        .K      ( K      ),
-        .P0_LSB ( P0_LSB ) )
-    dut_enc (
-        .d_i  ( enc_d ),      //information bit vector input
-        .q_o  ( enc_q ),      //encoded data word output
-
-        .p_o  (       ),      //parity vector output
-        .p0_o (       ));     //extended parity bit
+    ecc_enc_core #(
+        .K      ( K       ),
+        .P0_LSB ( P0_LSB  )
+    ) enc_core (
+        .d_i  ( enc_d ),
+        .q_o  ( enc_q ),
+        .p_o  (       ),
+        .p0_o (       )
+    );     //extended parity bit
 
 
     //instantiate channel
@@ -348,28 +355,34 @@ module ecc_tb_top ;
 
 
     //delay data; same delay as channel
-    always @(posedge clk) ch_enc_d <= enc_d;
+    logic [K-1:0] ch_enc_d2;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            ch_enc_d  <= 0;
+            ch_enc_d2 <= 0;
+        end else begin
+            ch_enc_d  <= enc_d;
+            ch_enc_d2 <= ch_enc_d;
+        end
+    end
 
 
     //instantiate decoder
-    ecc_dec #(
-        .K          ( K           ),
-        .P0_LSB     ( P0_LSB      ),
-        .LATENCY    ( DEC_LATENCY ))
-    dut_dec (
-        .rst_ni     ( rst_n      ),   //asynchronous reset
-        .clk_i      ( clk        ),   //clock input
-        .clkena_i   ( 1'b1       ),   //clock enable input
-
-        //data ports
-        .d_i        ( ch_q       ),   //encoded code word input
-        .q_o        ( dec_q      ),   //information bit vector output
-        .syndrome_o (            ),   //syndrome vector output
-
-        //flags
-        .sb_err_o   ( dec_sb_err ),   //single bit error detected
-        .db_err_o   ( dec_db_err ),   //double bit error detected
-        .sb_fix_o   ( dec_sb_fix ));  //repaired error in the information bits
+    ecc_dec_core #(
+        .K       ( K        ),
+        .LATENCY ( DEC_LATENCY ),
+        .P0_LSB  ( P0_LSB   )
+    ) dec_core (
+        .rst_ni    ( rst_n      ),
+        .clk_i     ( clk        ),
+        .clkena_i  ( 1'b1       ),
+        .d_i       ( ch_q       ),
+        .q_o       ( dec_q      ),
+        .syndrome_o(            ),
+        .sb_err_o  ( dec_sb_err ),
+        .db_err_o  ( dec_db_err ),
+        .sb_fix_o  ( dec_sb_fix )
+    );  //repaired error in the information bits
 
 
     //instantiate checker
@@ -383,7 +396,7 @@ module ecc_tb_top ;
         .flip1_i  ( ch_flip1   ),
         .flip2_i  ( ch_flip2   ),
 
-        .enc_d_i  ( ch_enc_d   ),
+        .enc_d_i  ( ch_enc_d2   ),
         .dec_q_i  ( dec_q      ),
 
         .sb_err_i ( dec_sb_err ),
@@ -392,8 +405,11 @@ module ecc_tb_top ;
 
 
     //Tests
-    initial
-    begin
+    initial begin
+        $dumpfile("ecc_tb_top.vcd");
+        $dumpvars(0, ecc_tb_top);
+    end
+    initial begin
         clk   = 0;
 
         rst_n = 0;

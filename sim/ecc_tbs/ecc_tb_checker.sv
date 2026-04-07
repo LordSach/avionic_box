@@ -82,6 +82,7 @@ module ecc_tb_checker (
     // Tasks
     //---------------------------------------------------------------------------------------------------------------------
     int good, bad, ugly;
+    int internal_idx;
 
     task reset_counters();
         good = 0;
@@ -116,6 +117,13 @@ module ecc_tb_checker (
 
     function is_power_of_2(input int n);
         is_power_of_2 = (n & (n-1)) == 0;
+    endfunction
+
+    function int internal_index(input int original, input int n);
+        if (original == n)
+            internal_index = 0;
+        else
+            internal_index = original + 1;
     endfunction
     
     //---------------------------------------------------------------------------------------------------------------------
@@ -195,55 +203,35 @@ module ecc_tb_checker (
             end
 
             1: begin
-                //sb_err should be asserted, except for P0 
-            if (flip1_i == P0_LOCATION)
-                begin
-                        if ( sb_err_i)
-                        begin
-                            $display ("sb_err asserted on P0 bit flip: WRONG (flipped bit%0d)", flip1_i);
-                            bad++; ugly++;
-                        end
-                        else
-                        begin
-                            // $display ("sb_err not asserted on P0 bit flip: GOOD");
-                            good++;
-                        end
-                end
-                else if (!sb_err_i)
-                begin
-                    $display  ("sb_err not asserted: WRONG (flipped bit%0d)", flip1_i);
-                    bad++; ugly++;
-                end
-                else good++;
-
-
-                //db_err should never be asserted
-                if (db_err_i)
-                begin
-                    $display ("db_err asserted: WRONG (flipped bit %0d)", flip1_i);
-                    bad++; ugly++;
-                end
-                else good++;
-
-            //parity bits are on power of 2, should never assert sb_fix
-            if (sb_fix_i)
-                begin
-                    if (is_power_of_2( P0_LSB ? flip1_i : flip1_i +1 ))
-                    begin
-                        $display ("sb_fix asserted on parity bit (flipped bit%0d): WRONG", flip1_i);
+                internal_idx = internal_index(flip1_i, n);
+                // sb_err should be asserted except for p0 (internal index 0)
+                if (internal_idx == 0) begin
+                    if (sb_err_i) begin
+                        $display("sb_err asserted on p0 bit flip (original bit %0d): WRONG", flip1_i);
                         bad++; ugly++;
-                    end
-                    else good++;
-                end
-                else
-                begin
-
-                    if (!is_power_of_2( P0_LSB ? flip1_i : flip1_i +1 ) && (flip1_i != P0_LOCATION))
-                    begin
-                        $display ("sb_fix not asserted on data bit (flipped bit%0d): WRONG", flip1_i);
+                    end else good++;
+                end else if (!sb_err_i) begin
+                    $display("sb_err not asserted: WRONG (original bit %0d, internal index %0d)", flip1_i, internal_idx);
+                    bad++; ugly++;
+                end else good++;
+            
+                // db_err should never be asserted for single-bit errors
+                if (db_err_i) begin
+                    $display("db_err asserted for single-bit error (original bit %0d): WRONG", flip1_i);
+                    bad++; ugly++;
+                end else good++;
+            
+                // sb_fix: asserted only if internal index is a data bit (non-zero and not power of two)
+                if (internal_idx != 0 && !is_power_of_2(internal_idx)) begin
+                    if (!sb_fix_i) begin
+                        $display("sb_fix not asserted on data bit (original bit %0d, internal index %0d): WRONG", flip1_i, internal_idx);
                         bad++; ugly++;
-                    end
-                    else good++;
+                    end else good++;
+                end else begin
+                    if (sb_fix_i) begin
+                        $display("sb_fix asserted on non-data bit (original bit %0d, internal index %0d): WRONG", flip1_i, internal_idx);
+                        bad++; ugly++;
+                    end else good++;
                 end
             end
 

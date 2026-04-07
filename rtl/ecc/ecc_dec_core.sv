@@ -159,7 +159,7 @@ module ecc_dec_core (
     function information_error(input [m:1] syndrome);
     begin
     //This function checks if an error was detected/corrected in the information bits
-    information_error = |syndrome & !is_power_of_2(syndrome);
+    information_error = |syndrome && !is_power_of_2(syndrome);
     end
     endfunction //information_error
     
@@ -229,6 +229,8 @@ module ecc_dec_core (
 
     //Step 3: Calculate syndrome
     assign syndrome = calculate_syndrome(d);
+
+    initial $display("syndrome = %b", syndrome); //debug display
 
     //Step 4: Generate intermediate registers (if any)
     generate
