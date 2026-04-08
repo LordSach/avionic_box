@@ -56,7 +56,7 @@ WORK_DIR := xsim_work
 # ---------------------------------------------------------------------------
 # Default: compile everything then run all three testbenches
 # ---------------------------------------------------------------------------
-all: sim_master_core sim_master_phy sim_slave_phy
+all: sim_slave_phy sim_master_core sim_master_phy
 
 # ---------------------------------------------------------------------------
 # Step 1 — Compile all RTL + all TBs into the work library
