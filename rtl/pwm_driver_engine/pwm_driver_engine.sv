@@ -139,6 +139,16 @@ module pwm_driver_engine (
     // pwm control register map (These registers are to be updated by the acuator manager FSM continuously from the Double Buffer)
     logic [CR_WIDTH-1   :0]         config_req_reg;
 
+    /*
+
+        f_pwm               - PWM frequency generated
+        f_g                 - local frequncy the PWM Driver Engine is driven
+        cycles_per_period   - number of cycles per PWM clock period.
+
+        f_pwm = f_g / cycles_per_period
+
+    */
+
     logic                           enable;              // clock enable for the system
     logic [CPP_WIDTH-1  :0]         cycles_per_period;   // total cycles (clk) for the period of PWM signal (resolution)
     logic [DC_WIDTH-1   :0]         duty_cycles;         // number of cycles (clk) the PWM signal stays HIGH
