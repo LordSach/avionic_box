@@ -73,14 +73,15 @@ module pwm_generator (
     // parameter definitions
     //---------------------------------------------------------------------------------------------------------------------
     
-    parameter CPP_WIDTH = 32;
-    parameter DC_WIDTH  = 32;
+    parameter CPP_WIDTH         = 32;
+    parameter DC_WIDTH          = 32;
+    
     
     //---------------------------------------------------------------------------------------------------------------------
     // localparam definitions
     //---------------------------------------------------------------------------------------------------------------------
     
-    // localparams
+    localparam COUNTER_WIDTH    = CPP_WIDTH;
     
     //---------------------------------------------------------------------------------------------------------------------
     // type definitions
@@ -92,23 +93,23 @@ module pwm_generator (
     // I/O signals
     //---------------------------------------------------------------------------------------------------------------------
     
-    input  wire        clk;
-    input  wire        rst_n;               // active-low synchronous reset
+    input  wire                 clk;
+    input  wire                 rst_n;               // active-low synchronous reset
 
     // Runtime configuration
-    input  wire        enable;              // clock enable for the system
-    input  wire [31:0] cycles_per_period;   // total cycles (clk) for the period of PWM signal (resolution)
-    input  wire [31:0] duty_cycles;         // number of cycles (clk) the PWM signal stays HIGH
+    input  wire                 enable;              // clock enable for the system
+    input  wire [CPP_WIDTH  :0] cycles_per_period;   // total cycles (clk) for the period of PWM signal (resolution)
+    input  wire [DC_WIDTH   :0] duty_cycles;         // number of cycles (clk) the PWM signal stays HIGH
 
     // Outputs
-    output reg         pwm_out;             // servo signal pin
-    output reg         irq_period;          // 1-cycle pulse at frame start
+    output reg                  pwm_out;             // servo signal pin
+    output reg                  irq_period;          // 1-cycle pulse at frame start
     
     //---------------------------------------------------------------------------------------------------------------------
     // Internal signals
     //---------------------------------------------------------------------------------------------------------------------
     
-    logic [31:0]        counter;
+    logic [COUNTER_WIDTH:0]     counter;
     
     //---------------------------------------------------------------------------------------------------------------------
     // Implementation
@@ -116,24 +117,24 @@ module pwm_generator (
     
     always @(posedge clk) begin
         if (!rst_n) begin
-            counter    <= 32'd0;
-            pwm_out    <= 1'b0;
-            irq_period <= 1'b0;
+            counter         <= {COUNTER_WIDTH{1'b0}};
+            pwm_out         <= 1'b0;
+            irq_period      <= 1'b0;
         end else if (!enable) begin
-            counter    <= 32'd0;
-            pwm_out    <= 1'b0;
-            irq_period <= 1'b0;
+            counter         <= {COUNTER_WIDTH{1'b0}};
+            pwm_out         <= 1'b0;
+            irq_period      <= 1'b0;
         end else begin
-            irq_period <= 1'b0; // default: deasserted
+            irq_period      <= 1'b0; // default: deasserted
 
-            if (counter >= (cycles_per_period - 32'd1)) begin
-                counter    <= 32'd0;
-                irq_period <= 1'b1; //interrupt
+            if (counter >= (cycles_per_period - 1'b1)) begin
+                counter     <= {COUNTER_WIDTH{1'b0}};
+                irq_period  <= 1'b1; //interrupt
             end else begin
-                counter <= counter + 32'd1;
+                counter     <= counter + 1'b1;
             end
 
-            pwm_out <= (counter < duty_cycles) ? 1'b1 : 1'b0;
+            pwm_out         <= (counter < duty_cycles) ? 1'b1 : 1'b0;
         end
     end
 

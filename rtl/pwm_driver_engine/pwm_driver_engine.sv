@@ -155,16 +155,16 @@ module pwm_driver_engine (
         .DC_WIDTH(DC_WIDTH)
     ) pwm_gen_int (
         .clk(clk),
-        .rst_n(rst_n),          // active-low synchronous reset
+        .rst_n(rst_n),
 
         // Runtime configuration (written by AXI-Lite wrapper)
         .enable(enable),
         .period_cycles(cycles_per_period),  // total frame length in clocks
-        .duty_cycles(duty_cycles),    // HIGH time in clocks
+        .duty_cycles(duty_cycles),          // HIGH time in clocks
 
         // Outputs
-        .pwm_out(pwm_out),        // servo signal pin
-        .irq_period(irq_period)      // 1-cycle pulse at frame start
+        .pwm_out(pwm_out),          // servo signal pin
+        .irq_period(irq_period)     // 1-cycle pulse at frame start
     );
     
     //---------------------------------------------------------------------------------------------------------------------
@@ -185,7 +185,7 @@ module pwm_driver_engine (
                 AMF_INITIATE: begin
                     // define initiate sequence (BIT boot setup)
 
-                    afm_state   <= AMF_IDLE;
+                    afm_state           <= AMF_IDLE;
                 end
                 AMF_IDLE: begin
                     // wait for the rd_busy & rd_timeout_error to be low to jump to AMF_READ_FROM_DB
