@@ -58,6 +58,7 @@ module ecc_tb_checker (
     flip2_i,
 
     enc_d_i,
+    valid_i,
     dec_q_i,
 
     sb_err_i,
@@ -77,6 +78,7 @@ module ecc_tb_checker (
     
     parameter K         = 8;
     parameter P0_LSB    = 0;
+    parameter LATENCY   = 0;
 
     //---------------------------------------------------------------------------------------------------------------------
     // Tasks
@@ -143,6 +145,7 @@ module ecc_tb_checker (
     input   logic [INT-1:0] flip2_i;
 
     input   logic [K-1:0]   enc_d_i;
+    input   logic           valid_i;
     input   logic [K-1:0]   dec_q_i;
 
     input   logic           sb_err_i;
@@ -166,101 +169,102 @@ module ecc_tb_checker (
         ugly = 0; //total errors
     end
 
-    always @(negedge clk_i)
-    begin
-        //Check if enc_d == dec_q
-        if (enc_d_i !== dec_q_i && !db_err_i)
-        begin
-            bad++; ugly++;
-            $display ("Data mismatch, expected %0h, received %0h", enc_d_i, dec_q_i);
-        end
-        else good++;
-
-        //Check flags
-        case (nflips_i)
-            0: begin
-                //no flags should be asserted
-                if (sb_err_i)
-                begin
-                    $display ("sb_err asserted: WRONG");
-                    bad++; ugly++;
-                end
-                else good++;
-
-                if (db_err_i)
-                begin
-                    $display ("db_err asserted: WRONG");
-                    bad++; ugly++;
-                end
-                else good++;
-
-                if (sb_fix_i)
-                begin
-                    $display ("sb_fix asserted: WRONG");
-                    bad++; ugly++;
-                end
-                else good++;
+    always @(posedge clk_i) begin
+        if (!valid_i) begin
+            //Check if enc_d == dec_q
+            if (enc_d_i !== dec_q_i && !db_err_i)
+            begin
+                bad++; ugly++;
+                $display ("Data mismatch, expected %0h, received %0h", enc_d_i, dec_q_i);
             end
+            else good++;
 
-            1: begin
-                internal_idx = internal_index(flip1_i, n);
-                // sb_err should be asserted except for p0 (internal index 0)
-                if (internal_idx == 0) begin
-                    if (sb_err_i) begin
-                        $display("sb_err asserted on p0 bit flip (original bit %0d): WRONG", flip1_i);
-                        bad++; ugly++;
-                    end else good++;
-                end else if (!sb_err_i) begin
-                    $display("sb_err not asserted: WRONG (original bit %0d, internal index %0d)", flip1_i, internal_idx);
-                    bad++; ugly++;
-                end else good++;
-            
-                // db_err should never be asserted for single-bit errors
-                if (db_err_i) begin
-                    $display("db_err asserted for single-bit error (original bit %0d): WRONG", flip1_i);
-                    bad++; ugly++;
-                end else good++;
-            
-                // sb_fix: asserted only if internal index is a data bit (non-zero and not power of two)
-                if (internal_idx != 0 && !is_power_of_2(internal_idx)) begin
-                    if (!sb_fix_i) begin
-                        $display("sb_fix not asserted on data bit (original bit %0d, internal index %0d): WRONG", flip1_i, internal_idx);
-                        bad++; ugly++;
-                    end else good++;
-                end else begin
-                    if (sb_fix_i) begin
-                        $display("sb_fix asserted on non-data bit (original bit %0d, internal index %0d): WRONG", flip1_i, internal_idx);
-                        bad++; ugly++;
-                    end else good++;
-                end
-            end
-
-            2: begin
-                    //db_err should be asserted
-                    if (!db_err_i)
+            //Check flags
+            case (nflips_i)
+                0: begin
+                    //no flags should be asserted
+                    if (sb_err_i)
                     begin
-                        $display ("db_err not asserted: WRONG (flipped bits%0d and %0d", flip1_i, flip2_i);
-                        bad++; ugly++;
-                    end
-                    else good++;
-            
-                    //sb_err should not be asserted
-            if (sb_err_i)
-                    begin
-                        $display ("sb_err asserted AND db_err not asserted: WRONG (flipped bits%0d and %0d)", flip1_i, flip2_i);
+                        $display ("sb_err asserted: WRONG");
                         bad++; ugly++;
                     end
                     else good++;
 
-                    //sb_fix should not be asserted
+                    if (db_err_i)
+                    begin
+                        $display ("db_err asserted: WRONG");
+                        bad++; ugly++;
+                    end
+                    else good++;
+
                     if (sb_fix_i)
                     begin
-                        $display ("sb_fix asserted AND db_err not asserted: WRONG(flipped bits%0d and %0d)", flip1_i, flip2_i);
+                        $display ("sb_fix asserted: WRONG");
                         bad++; ugly++;
                     end
                     else good++;
-            end
-        endcase
+                end
+
+                1: begin
+                    internal_idx = internal_index(flip1_i, n);
+                    // sb_err should be asserted except for p0 (internal index 0)
+                    if (internal_idx == 0) begin
+                        if (sb_err_i) begin
+                            $display("sb_err asserted on p0 bit flip (original bit %0d): WRONG", flip1_i);
+                            bad++; ugly++;
+                        end else good++;
+                    end else if (!sb_err_i) begin
+                        $display("sb_err not asserted: WRONG (original bit %0d, internal index %0d)", flip1_i, internal_idx);
+                        bad++; ugly++;
+                    end else good++;
+                
+                    // db_err should never be asserted for single-bit errors
+                    if (db_err_i) begin
+                        $display("db_err asserted for single-bit error (original bit %0d): WRONG", flip1_i);
+                        bad++; ugly++;
+                    end else good++;
+                
+                    // sb_fix: asserted only if internal index is a data bit (non-zero and not power of two)
+                    if (internal_idx != 0 && !is_power_of_2(internal_idx)) begin
+                        if (!sb_fix_i) begin
+                            $display("sb_fix not asserted on data bit (original bit %0d, internal index %0d): WRONG", flip1_i, internal_idx);
+                            bad++; ugly++;
+                        end else good++;
+                    end else begin
+                        if (sb_fix_i) begin
+                            $display("sb_fix asserted on non-data bit (original bit %0d, internal index %0d): WRONG", flip1_i, internal_idx);
+                            bad++; ugly++;
+                        end else good++;
+                    end
+                end
+
+                2: begin
+                        //db_err should be asserted
+                        if (!db_err_i)
+                        begin
+                            $display ("db_err not asserted: WRONG (flipped bits%0d and %0d", flip1_i, flip2_i);
+                            bad++; ugly++;
+                        end
+                        else good++;
+                
+                        //sb_err should not be asserted
+                if (sb_err_i)
+                        begin
+                            $display ("sb_err asserted AND db_err not asserted: WRONG (flipped bits%0d and %0d)", flip1_i, flip2_i);
+                            bad++; ugly++;
+                        end
+                        else good++;
+
+                        //sb_fix should not be asserted
+                        if (sb_fix_i)
+                        begin
+                            $display ("sb_fix asserted AND db_err not asserted: WRONG(flipped bits%0d and %0d)", flip1_i, flip2_i);
+                            bad++; ugly++;
+                        end
+                        else good++;
+                end
+            endcase
+        end
     end
 
 endmodule

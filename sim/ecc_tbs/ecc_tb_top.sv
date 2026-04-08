@@ -63,8 +63,8 @@ module ecc_tb_top ;
     
     parameter K           = 72;  //Limitation $urandom is a 32bit number
     parameter P0_LSB      = 0;
-    parameter DEC_LATENCY = 0;
-    parameter RUNS        = 1000;
+    parameter DEC_LATENCY = 2;
+    parameter RUNS        = 10;
     
     //---------------------------------------------------------------------------------------------------------------------
     // localparam definitions
@@ -96,6 +96,9 @@ module ecc_tb_top ;
     logic [INT-1:0] ch_flip1;
     logic [INT-1:0] flip2;
     logic [INT-1:0] ch_flip2;
+
+    logic           valid_in;
+    logic           valid_pipe [0:DEC_LATENCY+1];
 
     //---------------------------------------------------------------------------------------------------------------------
     // Functions
@@ -356,13 +359,16 @@ module ecc_tb_top ;
 
     //delay data; same delay as channel
     logic [K-1:0] ch_enc_d2;
+
+    logic [K-1:0] ref_pipe [0:DEC_LATENCY+1];
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            ch_enc_d  <= 0;
-            ch_enc_d2 <= 0;
+            for (int i = 0; i <= DEC_LATENCY+1; i++)
+                ref_pipe[i] <= '0;
         end else begin
-            ch_enc_d  <= enc_d;
-            ch_enc_d2 <= ch_enc_d;
+            ref_pipe[0] <= enc_d;
+            for (int i = 1; i <= DEC_LATENCY+1; i++)
+                ref_pipe[i] <= ref_pipe[i-1];
         end
     end
 
@@ -396,12 +402,25 @@ module ecc_tb_top ;
         .flip1_i  ( ch_flip1   ),
         .flip2_i  ( ch_flip2   ),
 
-        .enc_d_i  ( ch_enc_d2   ),
+        .enc_d_i  ( ref_pipe[DEC_LATENCY+1]   ),
+        .valid_i ( valid_pipe[DEC_LATENCY+1] ),
         .dec_q_i  ( dec_q      ),
 
         .sb_err_i ( dec_sb_err ),
         .db_err_i ( dec_db_err ),
-        .sb_fix_i ( dec_sb_fix ));
+        .sb_fix_i ( dec_sb_fix )
+    );
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            for (int i = 0; i <= DEC_LATENCY+1; i++)
+                valid_pipe[i] <= 0;
+        end else begin
+            valid_pipe[0] <= valid_in;
+            for (int i = 1; i <= DEC_LATENCY+1; i++)
+                valid_pipe[i] <= valid_pipe[i-1];
+        end
+    end
 
 
     //Tests
@@ -411,10 +430,11 @@ module ecc_tb_top ;
     end
     initial begin
         clk   = 0;
-
+        valid_in = 0;
         rst_n = 0;
         repeat (5) @(posedge clk);
         rst_n = 1;
+        valid_in = 1;  // start valid transactions
 
         welcome_msg();
         tst_clean_seq(K);
