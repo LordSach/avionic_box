@@ -99,7 +99,7 @@ Each device is managed by a dedicated engine and buffer pair.
 
 The system is designed for AXI integration:
 
-- AXI4-Lite: Control plane (PWM Driver Engine register access through the Actuator Double Buffer Access Controller for the Command Dispatcher)
+- AXI4 : Control plane (PWM Driver Engine register access through the Actuator Double Buffer Access Controller for the Command Dispatcher)
 - AXI4 : Data movement (Sensor Double Buffer Access Controller Interfacing with the Command Dispatcher)
 
 ---
